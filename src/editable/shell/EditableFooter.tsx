@@ -1,57 +1,128 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
-import { ArrowUpRight } from 'lucide-react'
+import { ArrowRight } from 'lucide-react'
 import { SITE_CONFIG } from '@/lib/site-config'
 import { globalContent } from '@/editable/content/global.content'
 import { useEditableLocalAuthSession } from '@/editable/components/EditableLocalAuthForms'
 
 export function EditableFooter() {
-  const taskLinks = SITE_CONFIG.tasks.filter((task) => task.enabled)
   const year = new Date().getFullYear()
   const { session, logout } = useEditableLocalAuthSession()
+  const [email, setEmail] = useState('')
+  const [subscribed, setSubscribed] = useState(false)
+
+  const handleSubscribe = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (email.trim()) { setSubscribed(true); setEmail('') }
+  }
 
   return (
-    <footer className="border-t border-[var(--editable-border)] bg-[var(--editable-footer-bg)] text-[var(--editable-footer-text)]">
-      <div className="h-[2px] bg-[linear-gradient(90deg,transparent_0%,var(--slot4-accent)_50%,transparent_100%)]" />
-      <div className="mx-auto grid max-w-[var(--editable-container)] gap-10 px-4 py-12 sm:px-6 lg:grid-cols-[1.2fr_1fr_1fr] lg:px-8">
-        <div>
-          <Link href="/" className="inline-flex items-center gap-3">
-            <span className="flex h-11 w-11 items-center justify-center border border-[var(--slot4-accent)]/40 bg-[var(--slot4-surface-bg)]">
-              <img src="/favicon.png?v=20260413" alt={SITE_CONFIG.name} className="h-8 w-8 object-contain" />
-            </span>
-            <span className="editable-display text-xl font-semibold tracking-[0.01em]">{SITE_CONFIG.name}</span>
-          </Link>
-          <p className="mt-4 max-w-md text-sm leading-7 text-[var(--slot4-muted-text)]">{globalContent.footer?.description || SITE_CONFIG.description}</p>
-        </div>
+    <footer className="border-t border-[rgba(255,255,255,0.06)] bg-[#080808] text-white">
+      <div className="mx-auto max-w-[var(--editable-container)] px-4 py-16 sm:px-6 lg:px-8">
+        <div className="grid gap-12 lg:grid-cols-[1.4fr_1fr_1fr]">
 
-        <div>
-          <h3 className="text-[10px] font-semibold uppercase tracking-[0.26em] text-[var(--slot4-accent)]">Explore</h3>
-          <div className="mt-4 grid gap-2">
-            {taskLinks.map((task) => (
-              <Link key={task.key} href={task.route} className="inline-flex items-center gap-2 text-sm font-medium text-[var(--slot4-muted-text)] transition hover:text-[var(--slot4-page-text)]">
-                {task.label} <ArrowUpRight className="h-3.5 w-3.5" />
-              </Link>
-            ))}
-          </div>
-        </div>
+          {/* Brand + Newsletter */}
+          <div className="space-y-7">
+            <Link href="/" className="inline-flex items-center gap-2.5">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#1e1e1e] ring-1 ring-[rgba(255,255,255,0.1)]">
+                <img src="/favicon.png?v=20260413" alt={SITE_CONFIG.name} className="h-8 w-8 object-contain" />
+              </div>
+              <span className="text-[16px] font-semibold tracking-tight">
+                {SITE_CONFIG.name}<span className="opacity-50">.</span>
+              </span>
+            </Link>
 
-        <div>
-          <h3 className="text-[10px] font-semibold uppercase tracking-[0.26em] text-[var(--slot4-accent)]">Site</h3>
-          <div className="mt-4 grid gap-2">
-            {[
-              ['About', '/about'],
-              ['Contact', '/contact'],
-              ...(session ? [['Create', '/create']] : [['Login', '/login'], ['Sign up', '/signup']]),
-            ].map(([label, href]) => (
-              <Link key={href} href={href} className="text-sm font-medium text-[var(--slot4-muted-text)] transition hover:text-[var(--slot4-page-text)]">{label}</Link>
-            ))}
-            {session ? <button type="button" onClick={logout} className="text-left text-sm font-medium text-[var(--slot4-muted-text)] transition hover:text-[var(--slot4-page-text)]">Logout</button> : null}
+            {/* Newsletter card — matches Infranex's avatar + form style */}
+            <div className="overflow-hidden rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#111111] p-5">
+              <div className="mb-4 flex items-center gap-3.5">
+                {/* Avatar placeholder */}
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#1e1e1e] text-xl">
+                  🌟
+                </div>
+                <p className="text-[14px] font-semibold text-white">
+                  Subscribe our newsletter
+                </p>
+              </div>
+              {subscribed ? (
+                <p className="text-[13px] text-[#888]">Thanks! You&apos;re subscribed.</p>
+              ) : (
+                <form onSubmit={handleSubscribe} className="flex overflow-hidden rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#0e0e0e]">
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="Enter your email"
+                    required
+                    className="min-w-0 flex-1 bg-transparent px-4 py-3 text-[13px] text-white outline-none placeholder:text-[#555]"
+                  />
+                  <button
+                    type="submit"
+                    className="flex h-11 w-11 shrink-0 items-center justify-center bg-[#1e1e1e] transition hover:bg-[#2a2a2a]"
+                    aria-label="Subscribe"
+                  >
+                    <ArrowRight className="h-4 w-4 text-white" />
+                  </button>
+                </form>
+              )}
+            </div>
           </div>
+
+          {/* Links column */}
+          <div>
+            <h3 className="mb-5 text-[12px] font-semibold uppercase tracking-[0.18em] text-white">Links</h3>
+            <ul className="space-y-3.5">
+              {[
+                { label: 'Home', href: '/' },
+                { label: 'About us', href: '/about' },
+                { label: 'Collections', href: '/sbm' },
+                { label: 'Search', href: '/search' },
+              ].map(({ label, href }) => (
+                <li key={href}>
+                  <Link href={href} className="text-[14px] text-[#888] transition hover:text-white">
+                    {label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Utility Pages column */}
+          <div>
+            <h3 className="mb-5 text-[12px] font-semibold uppercase tracking-[0.18em] text-white">Utility Pages</h3>
+            <ul className="space-y-3.5">
+              {[
+                { label: 'Contact', href: '/contact' },
+                { label: 'Login', href: '/login' },
+                { label: 'Sign up', href: '/signup' },
+                ...(session ? [{ label: 'Create post', href: '/create' }] : []),
+              ].map(({ label, href }) => (
+                <li key={href}>
+                  <Link href={href} className="text-[14px] text-[#888] transition hover:text-white">
+                    {label}
+                  </Link>
+                </li>
+              ))}
+              {session ? (
+                <li>
+                  <button type="button" onClick={logout} className="text-[14px] text-[#888] transition hover:text-white">
+                    Logout
+                  </button>
+                </li>
+              ) : null}
+            </ul>
+          </div>
+
         </div>
       </div>
-      <div className="border-t border-[var(--editable-border)] px-4 py-5 text-center text-xs font-medium tracking-[0.12em] text-[var(--slot4-muted-text)]">
-        © {year} {SITE_CONFIG.name}. All rights reserved.
+
+      {/* Bottom bar */}
+      <div className="border-t border-[rgba(255,255,255,0.06)] px-4 py-5 sm:px-6 lg:px-8">
+        <div className="mx-auto flex max-w-[var(--editable-container)] items-center justify-between gap-4 text-[13px] text-[#555]">
+          <span>© {year} {SITE_CONFIG.name} All Rights Reserved.</span>
+          <span className="hidden sm:block">{globalContent.footer?.bottomNote}</span>
+        </div>
       </div>
     </footer>
   )
