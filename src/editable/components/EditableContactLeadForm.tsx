@@ -63,7 +63,7 @@ export function EditableContactLeadForm() {
       <button
         type="submit"
         disabled={status === 'submitting'}
-        className="mt-6 inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[var(--slot4-accent-fill)] px-6 text-sm font-semibold uppercase tracking-[0.18em] text-[var(--slot4-on-accent)] shadow-[0_8px_24px_rgba(79,70,229,0.28)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70"
+        className="mt-6 inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-[rgba(255,255,255,0.12)] bg-[#1e1e1e] px-6 text-sm font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-[#2a2a2a] disabled:cursor-not-allowed disabled:opacity-70"
       >
         {status === 'submitting' ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
         Send message

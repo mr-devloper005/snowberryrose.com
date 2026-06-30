@@ -1,7 +1,11 @@
+'use client'
+
+import { useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import {
-  ArrowRight, Bookmark, Building2, Camera, ChevronRight, FileText, Image as ImageIcon,
-  MapPin, Megaphone, MessageSquare, Search, Share2, Star, ThumbsUp, UserRound,
+  ArrowRight, Bookmark, ChevronDown, ChevronUp,
+  ExternalLink, Globe, Search, Star, X,
 } from 'lucide-react'
 import type { SitePost } from '@/lib/site-connector'
 import type { HomeTimeSection } from '@/lib/task-data'
@@ -9,7 +13,6 @@ import type { TaskKey } from '@/lib/site-config'
 import { SITE_CONFIG } from '@/lib/site-config'
 import { pagesContent } from '@/editable/content/pages.content'
 import { getEditablePostImage, postHref } from '@/editable/cards/PostCards'
-import { EditableHeroCollage } from '@/editable/sections/EditableHeroCollage'
 
 type HomeSectionProps = {
   primaryTask: TaskKey
@@ -18,29 +21,14 @@ type HomeSectionProps = {
   timeSections: HomeTimeSection[]
 }
 
-const taskIcon: Record<TaskKey, typeof FileText> = {
-  article: FileText,
-  listing: Building2,
-  classified: Megaphone,
-  image: ImageIcon,
-  sbm: Bookmark,
-  pdf: FileText,
-  profile: UserRound,
-}
-
-function taskLabel(task: TaskKey) {
-  return SITE_CONFIG.tasks.find((item) => item.key === task)?.label || task
-}
-
-function getExcerpt(post?: SitePost | null, limit = 130) {
+function getExcerpt(post?: SitePost | null, limit = 120) {
   const content = post?.content && typeof post.content === 'object' ? (post.content as Record<string, unknown>) : {}
   const raw =
     (typeof content.description === 'string' && content.description) ||
     (typeof content.summary === 'string' && content.summary) ||
-    post?.summary ||
-    ''
+    post?.summary || ''
   const clean = raw.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
-  return clean.length > limit ? `${clean.slice(0, limit).trim()}...` : clean
+  return clean.length > limit ? `${clean.slice(0, limit).trim()}…` : clean
 }
 
 function categoryOf(post?: SitePost | null) {
@@ -48,248 +36,350 @@ function categoryOf(post?: SitePost | null) {
   return (typeof content.category === 'string' && content.category) || post?.tags?.[0] || ''
 }
 
-// Stable hash so derived ratings/counts stay consistent between renders.
-function hashStr(value: string) {
-  let h = 0
-  for (let i = 0; i < value.length; i += 1) h = (h * 31 + value.charCodeAt(i)) >>> 0
-  return h
-}
-
-// Prefer real rating/review data when present, else a stable display value so
-// the Yelp-style star UI always reads well. (Wire to real fields when ready.)
-function ratingOf(post: SitePost) {
+function getWebsite(post?: SitePost | null) {
   const content = post?.content && typeof post.content === 'object' ? (post.content as Record<string, unknown>) : {}
-  const real = Number(content.rating)
-  if (real >= 1 && real <= 5) return Math.round(real * 10) / 10
-  const h = hashStr(post.slug || post.id || post.title || 'x')
-  return Math.round((3.7 + (h % 13) / 10) * 10) / 10 // 3.7 – 4.9
+  return (typeof content.website === 'string' && content.website) || (typeof content.url === 'string' && content.url) || ''
 }
 
-function reviewsOf(post: SitePost) {
-  const content = post?.content && typeof post.content === 'object' ? (post.content as Record<string, unknown>) : {}
-  const real = Number(content.reviewCount ?? content.reviews)
-  if (real > 0) return Math.floor(real)
-  return 6 + (hashStr((post.slug || post.title || 'x') + 'r') % 480)
+function dedupePosts(posts: SitePost[]) {
+  const seen = new Set<string>()
+  return posts.filter((p) => {
+    const key = p.slug || p.id || p.title
+    if (!key || seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
 }
 
-function Stars({ rating, className = 'h-4 w-4' }: { rating: number; className?: string }) {
-  const rounded = Math.round(rating)
+const wrap = 'mx-auto w-full max-w-[var(--editable-container)] px-4 sm:px-6 lg:px-8'
+
+/* ─── Reusable section badge (the Infranex pill pattern) ─── */
+function SectionBadge({ children }: { children: React.ReactNode }) {
   return (
-    <span className="inline-flex items-center gap-[3px]" aria-label={`${rating} out of 5`}>
-      {[0, 1, 2, 3, 4].map((i) => (
-        <Star
-          key={i}
-          className={`${className} ${i < rounded ? 'fill-[var(--slot4-accent)] text-[var(--slot4-accent)]' : 'fill-[var(--editable-border)] text-[var(--editable-border)]'}`}
-        />
-      ))}
-    </span>
-  )
-}
-
-function RatingRow({ post }: { post: SitePost }) {
-  const rating = ratingOf(post)
-  return (
-    <div className="mt-2 flex items-center gap-2">
-      <Stars rating={rating} className="h-4 w-4" />
-      <span className="text-sm font-semibold text-[var(--slot4-page-text)]">{rating.toFixed(1)}</span>
-      <span className="text-sm text-[var(--slot4-muted-text)]">({reviewsOf(post)})</span>
+    <div className="inline-flex items-center gap-2.5 rounded-full border border-[rgba(255,255,255,0.1)] bg-[#1a1a1a] px-4 py-2">
+      <Bookmark className="h-3.5 w-3.5 text-white opacity-70" />
+      <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">{children}</span>
     </div>
   )
 }
 
-const container = 'mx-auto w-full max-w-[var(--editable-container)] px-4 sm:px-6 lg:px-8'
-
-/* ----------------------------- Hero banner ----------------------------- */
-// Latest posts' real images (newest first, deduped, placeholders dropped).
-function latestPostImages(posts: SitePost[], max = 8) {
-  const seen = new Set<string>()
-  const out: string[] = []
-  for (const post of posts) {
-    const img = getEditablePostImage(post)
-    if (!img || img.includes('placeholder') || seen.has(img)) continue
-    seen.add(img)
-    out.push(img)
-    if (out.length >= max) break
-  }
-  return out
-}
-
-// Merge the primary feed with the time-window feeds so home always has content,
-// even when one source comes back empty for this site.
-function dedupePosts(posts: SitePost[]) {
-  const seen = new Set<string>()
-  const out: SitePost[] = []
-  for (const post of posts) {
-    const key = post.slug || post.id || post.title
-    if (!key || seen.has(key)) continue
-    seen.add(key)
-    out.push(post)
-  }
-  return out
-}
-
-export function EditableHomeHero({ primaryTask, primaryRoute, posts, timeSections }: HomeSectionProps) {
-  const pool = dedupePosts([...posts, ...timeSections.flatMap((section) => section.posts)])
-  const heroImages = latestPostImages(pool)
-  const heroTitle = pagesContent.home.hero.title?.join(' ') || `Discover the best of ${SITE_CONFIG.name}`
-  const categories = SITE_CONFIG.tasks.filter((task) => task.enabled).slice(0, 6)
-
+/* ─── Hero ─── */
+export function EditableHomeHero(_: HomeSectionProps) {
   return (
-    <section className="relative">
-      <div className="relative h-[440px] w-full overflow-hidden sm:h-[520px] lg:h-[560px]">
-        <EditableHeroCollage images={heroImages} />
-        <div className="absolute inset-0 bg-black/25" />
-        <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(0,0,0,0.82)_0%,rgba(0,0,0,0.5)_45%,rgba(0,0,0,0.2)_100%)]" />
-        <div className={`relative flex h-full flex-col justify-center ${container}`}>
-          <div className="max-w-2xl">
-            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-white/80">{pagesContent.home.hero.badge || 'Welcome'}</p>
-            <h1 className="mt-3 text-balance text-4xl font-extrabold leading-[1.05] tracking-[-0.02em] text-white sm:text-5xl lg:text-6xl">
-              {heroTitle}
-            </h1>
-            <p className="mt-4 max-w-xl text-base text-white/90 sm:text-lg">{pagesContent.home.hero.description}</p>
+    <>
+      {/* Hero with cosmic/nebula dark bg */}
+      <section className="relative isolate flex min-h-screen flex-col items-center justify-center overflow-hidden bg-[#080808] text-center">
+        {/* Layered dark cloud/nebula bg — pure CSS */}
+        <div className="pointer-events-none absolute inset-0 -z-10">
+          <div className="absolute inset-0 bg-[#080808]" />
+          {/* Cloud-like dark masses */}
+          <div className="absolute right-[5%] top-[8%] h-[500px] w-[600px] rounded-full bg-[radial-gradient(ellipse_at_center,rgba(45,45,45,0.55)_0%,transparent_70%)] blur-[2px]" />
+          <div className="absolute right-[20%] top-[15%] h-[350px] w-[450px] rounded-full bg-[radial-gradient(ellipse_at_center,rgba(35,35,35,0.6)_0%,transparent_65%)]" />
+          <div className="absolute right-[10%] top-[30%] h-[280px] w-[380px] rounded-full bg-[radial-gradient(ellipse_at_center,rgba(55,55,55,0.35)_0%,transparent_60%)] blur-[1px]" />
+          <div className="absolute left-[5%] top-[40%] h-[200px] w-[200px] rounded-full bg-[radial-gradient(ellipse_at_center,rgba(40,40,40,0.4)_0%,transparent_70%)]" />
+          {/* Subtle center glow */}
+          <div className="absolute left-1/2 top-1/2 h-[600px] w-[800px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(ellipse_at_center,rgba(30,30,30,0.3)_0%,transparent_60%)]" />
+          {/* Very subtle grain overlay */}
+          <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='1'/%3E%3C/svg%3E\")", backgroundSize: '200px 200px' }} />
+        </div>
 
-            <form action="/search" className="mt-7 flex w-full max-w-xl overflow-hidden rounded-full bg-white shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
-              <div className="flex flex-1 items-center gap-2.5 px-5">
-                <Search className="h-5 w-5 shrink-0 text-[var(--slot4-muted-text)]" />
-                <input
-                  name="q"
-                  placeholder="Search posts, places, topics…"
-                  className="w-full bg-transparent py-4 text-sm text-[var(--slot4-page-text)] outline-none placeholder:text-[var(--slot4-muted-text)]"
-                />
-              </div>
-              <button className="shrink-0 bg-[var(--slot4-accent)] px-6 text-sm font-bold text-white transition hover:brightness-95 sm:px-8">
-                Search
-              </button>
-            </form>
+        <div className={`${wrap} flex flex-col items-center gap-8 py-32`}>
+          {/* Badge */}
+          <SectionBadge>{pagesContent.home.hero.badge}</SectionBadge>
 
-            <div className="mt-6 flex flex-wrap gap-2.5">
-              {categories.map((task) => (
-                <Link
-                  key={task.key}
-                  href={task.route}
-                  className="rounded-full border border-white/30 bg-white/10 px-4 py-1.5 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/20"
-                >
-                  {task.label}
-                </Link>
+          {/* Headline */}
+          <h1 className="max-w-3xl text-balance text-[3.25rem] font-bold leading-[1.04] tracking-[-0.03em] text-white sm:text-[4.5rem] lg:text-[5.5rem]">
+            {pagesContent.home.hero.title?.map((line, i) => (
+              <span key={i}>
+                {i > 0 && <br />}
+                {line}
+              </span>
+            ))}
+          </h1>
+
+          {/* Subheading */}
+          <p className="max-w-lg text-[17px] leading-7 text-[#888888]">
+            {pagesContent.home.hero.description}
+          </p>
+
+          {/* Single dark CTA — matches Infranex's "GET STARTED NOW →" */}
+          <Link
+            href={pagesContent.home.hero.primaryCta.href}
+            className="inline-flex items-center gap-3 rounded-xl border border-[rgba(255,255,255,0.12)] bg-[#1e1e1e] px-8 py-4 text-[15px] font-semibold text-white transition duration-200 hover:bg-[#2a2a2a] active:scale-[0.98]"
+          >
+            {pagesContent.home.hero.primaryCta.label.toUpperCase()}
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
+
+        {/* Trust strip at bottom of hero */}
+        <div className="absolute bottom-0 left-0 right-0 border-t border-[rgba(255,255,255,0.06)]">
+          <div className={`${wrap} py-6`}>
+            <p className="mb-5 text-center text-[10px] font-semibold uppercase tracking-[0.26em] text-[#555555]">
+              Trusted by the world&apos;s largest companies
+            </p>
+            <div className="flex flex-wrap items-center justify-center gap-x-10 gap-y-3 opacity-30">
+              {['TECHCORP', 'WEBFLOW', 'STRIPE', 'VERCEL', 'NOTION', 'LINEAR'].map((brand) => (
+                <span key={brand} className="text-[13px] font-bold tracking-[0.12em] text-white">{brand}</span>
               ))}
             </div>
           </div>
         </div>
-        {heroImages.length ? (
-          <p className="absolute bottom-4 left-4 text-xs font-medium text-white/70 sm:left-8">Latest on {SITE_CONFIG.name}</p>
-        ) : null}
-      </div>
-      {/* Quick stat strip under hero (Yelp-like trust band) */}
-      <div className="border-b border-[var(--editable-border)] bg-[var(--slot4-surface-bg)]">
-        <div className={`flex flex-wrap items-center justify-center gap-x-10 gap-y-2 py-4 text-sm text-[var(--slot4-muted-text)] ${container}`}>
-          <span className="inline-flex items-center gap-2"><Star className="h-4 w-4 fill-[var(--slot4-accent)] text-[var(--slot4-accent)]" /> Trusted reviews</span>
-          <span className="inline-flex items-center gap-2"><MapPin className="h-4 w-4 text-[var(--slot4-accent)]" /> Local discovery</span>
-          <span className="hidden items-center gap-2 sm:inline-flex"><ThumbsUp className="h-4 w-4 text-[var(--slot4-accent)]" /> Updated daily</span>
-          <Link href={primaryRoute} className="inline-flex items-center gap-1 font-semibold text-[var(--slot4-accent)] hover:underline">
-            Browse {taskLabel(primaryTask).toLowerCase()} <ChevronRight className="h-4 w-4" />
-          </Link>
-        </div>
-      </div>
-    </section>
+      </section>
+    </>
   )
 }
 
-/* -------------------------- Browse by category -------------------------- */
-export function EditableStoryRail({ primaryRoute }: HomeSectionProps) {
-  const categories = SITE_CONFIG.tasks.filter((task) => task.enabled)
-  if (!categories.length) return null
-  return (
-    <section className="bg-[var(--slot4-surface-bg)]">
-      <div className={`py-12 sm:py-14 ${container}`}>
-        <div className="flex items-end justify-between gap-4">
-          <div>
-            <h2 className="text-2xl font-extrabold tracking-[-0.01em] sm:text-3xl">Browse by category</h2>
-            <p className="mt-2 text-[var(--slot4-muted-text)]">Jump straight to what you’re looking for.</p>
-          </div>
-          <Link href={primaryRoute} className="hidden items-center gap-1 text-sm font-semibold text-[var(--slot4-accent)] hover:underline sm:inline-flex">
-            See all <ArrowRight className="h-4 w-4" />
-          </Link>
-        </div>
-        <div className="mt-7 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-          {categories.map((task) => {
-            const Icon = taskIcon[task.key] || FileText
-            return (
-              <Link
-                key={task.key}
-                href={task.route}
-                className="group flex flex-col items-center gap-3 rounded-xl border border-[var(--editable-border)] bg-[var(--slot4-surface-bg)] px-3 py-6 text-center transition duration-300 hover:-translate-y-1 hover:border-[var(--slot4-accent)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.10)]"
-              >
-                <span className="flex h-14 w-14 items-center justify-center rounded-full bg-[var(--slot4-accent-soft)] text-[var(--slot4-accent)] transition group-hover:scale-105">
-                  <Icon className="h-6 w-6" />
-                </span>
-                <span className="text-sm font-semibold text-[var(--slot4-page-text)]">{task.label}</span>
-              </Link>
-            )
-          })}
-        </div>
-      </div>
-    </section>
-  )
-}
+/* helpers for extracting post data */
+const postContent = (post: SitePost) => post.content && typeof post.content === 'object' ? post.content as Record<string, unknown> : {}
+const postText = (v: unknown) => typeof v === 'string' ? v.trim() : ''
+const postCategory = (post: SitePost) => postText(postContent(post).category) || post.tags?.[0] || ''
 
-/* ---------------------------- Recent activity --------------------------- */
-function ActivityCard({ post, href }: { post: SitePost; href: string }) {
-  const category = categoryOf(post)
-  const image = getEditablePostImage(post)
-  return (
-    <article className="flex flex-col overflow-hidden rounded-xl border border-[var(--editable-border)] bg-[var(--slot4-surface-bg)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_8px_28px_rgba(0,0,0,0.12)]">
-      <div className="flex items-center gap-3 px-4 pt-4">
-        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--slot4-accent-soft)] text-[var(--slot4-accent)]">
-          <Camera className="h-4 w-4" />
-        </span>
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-[var(--slot4-page-text)]">{category || 'New post'}</p>
-        </div>
-      </div>
-      <Link href={href} className="group mt-3 block">
-        <div className="relative aspect-[3/2] overflow-hidden bg-[var(--slot4-media-bg)]">
-          <img src={image} alt={post.title} className="absolute inset-0 h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]" loading="lazy" />
-        </div>
-      </Link>
-      <div className="flex flex-1 flex-col px-4 py-4">
-        <Link href={href} className="text-lg font-bold leading-snug tracking-[-0.01em] text-[var(--slot4-page-text)] hover:text-[var(--slot4-accent)]">
-          {post.title}
-        </Link>
-        <RatingRow post={post} />
-        <p className="mt-2 line-clamp-2 flex-1 text-sm leading-6 text-[var(--slot4-muted-text)]">{getExcerpt(post, 140)}</p>
-        <Link href={href} className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-[var(--slot4-accent)] hover:underline">
-          Read more
-        </Link>
-      </div>
-      <div className="flex items-center gap-6 border-t border-[var(--editable-border)] px-4 py-3 text-[var(--slot4-muted-text)]">
-        <span className="inline-flex items-center gap-1.5 text-xs font-medium"><ThumbsUp className="h-4 w-4" /> Helpful</span>
-        <span className="inline-flex items-center gap-1.5 text-xs font-medium"><MessageSquare className="h-4 w-4" /> Comment</span>
-        <span className="inline-flex items-center gap-1.5 text-xs font-medium"><Share2 className="h-4 w-4" /> Share</span>
-      </div>
-    </article>
-  )
-}
+/* ─── How It Works — 3 tall cards ─── */
+export function EditableStoryRail({ posts, primaryRoute }: HomeSectionProps) {
+  const livePosts = posts.slice(0, 12)
 
-export function EditableMagazineSplit({ primaryTask, primaryRoute, posts, timeSections }: HomeSectionProps) {
-  const activity = dedupePosts([...posts, ...timeSections.flatMap((section) => section.posts)]).slice(0, 9)
-  if (!activity.length) return null
+  /* derive categories from real tags, fall back to generic labels */
+  const rawCategories = [...new Set(
+    livePosts.flatMap((p) => [...(p.tags || []), postCategory(p)]).filter(Boolean)
+  )].slice(0, 5)
+  const categories = rawCategories.length >= 3 ? rawCategories : ['Services', 'Dining', 'Retail', 'Health', 'Tech']
+
+  /* pick a representative post for the detail card */
+  const detailPost = livePosts[0] ?? null
+
+  const steps = [
+    {
+      title: 'Browse Local Listings',
+      body: 'Search businesses, services, and spaces by name or keyword. Every listing is clean, detailed, and easy to navigate.',
+      mockup: <BrowseMockup posts={livePosts} primaryRoute={primaryRoute} />,
+    },
+    {
+      title: 'Filter by Category',
+      body: 'Explore by service type, industry, or location. Narrow results instantly to find exactly what you\'re looking for.',
+      mockup: <FilterMockup posts={livePosts} categories={categories} primaryRoute={primaryRoute} />,
+    },
+    {
+      title: 'Connect Directly',
+      body: 'Get business details, opening hours, location, and contact info — all on one focused, distraction-free page.',
+      mockup: <ConnectMockup post={detailPost} primaryRoute={primaryRoute} />,
+    },
+  ]
+
   return (
-    <section className="bg-[var(--slot4-warm)]">
-      <div className={`py-14 sm:py-16 ${container}`}>
-        <div className="text-center">
-          <h2 className="text-3xl font-extrabold tracking-[-0.01em] sm:text-4xl">Recent activity</h2>
-          <p className="mx-auto mt-3 max-w-2xl text-[var(--slot4-muted-text)]">
-            The latest posts, reviews and finds from across {SITE_CONFIG.name}.
+    <section className="bg-[#080808] py-24 sm:py-28">
+      <div className={wrap}>
+        <div className="mb-14 flex flex-col items-center gap-5 text-center">
+          <SectionBadge>HOW IT WORKS</SectionBadge>
+          <h2 className="max-w-2xl text-[2.5rem] font-bold leading-[1.05] tracking-[-0.03em] sm:text-[3.5rem]">
+            Find any business in three steps
+          </h2>
+          <p className="max-w-lg text-[16px] leading-7 text-[#888888]">
+            Browse, filter, and connect with local businesses and services — all in one clean experience.
           </p>
         </div>
-        <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {activity.map((post) => (
-            <ActivityCard key={post.id || post.slug} post={post} href={postHref(primaryTask, post, primaryRoute)} />
+
+        <div className="grid gap-5 lg:grid-cols-3">
+          {steps.map((step) => (
+            <div
+              key={step.title}
+              className="flex flex-col overflow-hidden rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#141414] transition duration-300 hover:border-[rgba(255,255,255,0.12)]"
+            >
+              <div className="flex flex-1 items-center justify-center p-8 pt-10">
+                {step.mockup}
+              </div>
+              <div className="border-t border-[rgba(255,255,255,0.07)] p-7">
+                <h3 className="text-[18px] font-bold tracking-[-0.015em]">{step.title}</h3>
+                <p className="mt-2 text-[14px] leading-6 text-[#888888]">{step.body}</p>
+              </div>
+            </div>
           ))}
         </div>
+      </div>
+    </section>
+  )
+}
+
+/* Card mockup UIs */
+const FALLBACK_ICONS = ['🏪', '🏢', '☕', '🎨', '🏋️', '🌿', '🖥️', '📦']
+
+function BrowseMockup({ posts, primaryRoute }: { posts: SitePost[]; primaryRoute: string }) {
+  const router = useRouter()
+  const [q, setQ] = useState('')
+  const items = posts.slice(0, 4).map((p, i) => ({
+    icon: FALLBACK_ICONS[i % FALLBACK_ICONS.length],
+    label: p.title,
+    sub: postCategory(p) || 'Listing',
+    slug: p.slug,
+  }))
+
+  return (
+    <div className="w-full max-w-[280px] space-y-2.5">
+      <form
+        onSubmit={(e) => { e.preventDefault(); router.push(`/search?q=${encodeURIComponent(q.trim() || '')}`) }}
+        className="flex items-center gap-2.5 rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#1e1e1e] px-4 py-3"
+      >
+        <Search className="h-4 w-4 shrink-0 text-[#555]" />
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search businesses, services…"
+          className="flex-1 bg-transparent text-[13px] text-white outline-none placeholder:text-[#555]"
+        />
+      </form>
+      {items.map((item) => (
+        <Link
+          key={item.slug}
+          href={`${primaryRoute}/${item.slug}`}
+          className="flex items-center gap-3 rounded-xl border border-[rgba(255,255,255,0.06)] bg-[#1a1a1a] px-4 py-2.5 transition hover:border-[rgba(255,255,255,0.14)] hover:bg-[#222]"
+        >
+          <span className="text-sm">{item.icon}</span>
+          <div className="min-w-0">
+            <p className="truncate text-[13px] text-[#aaa]">{item.label}</p>
+            <p className="text-[10px] capitalize text-[#555]">{item.sub}</p>
+          </div>
+        </Link>
+      ))}
+    </div>
+  )
+}
+
+function FilterMockup({ posts, categories, primaryRoute }: { posts: SitePost[]; categories: string[]; primaryRoute: string }) {
+  const [active, setActive] = useState(categories[0] ?? '')
+  const router = useRouter()
+
+  const filtered = active
+    ? posts.filter((p) =>
+        (p.tags || []).some((t) => t.toLowerCase() === active.toLowerCase()) ||
+        postCategory(p).toLowerCase() === active.toLowerCase()
+      ).slice(0, 3)
+    : posts.slice(0, 3)
+
+  const displayPosts = filtered.length ? filtered : posts.slice(0, 3)
+
+  return (
+    <div className="w-full max-w-[280px] space-y-3">
+      <div className="flex flex-wrap gap-2">
+        {categories.map((tag) => (
+          <button
+            key={tag}
+            type="button"
+            onClick={() => { setActive(tag); router.push(`/search?category=${encodeURIComponent(tag.toLowerCase())}`) }}
+            className={`rounded-full border px-3 py-1 text-[12px] font-medium capitalize transition ${tag === active ? 'border-white/30 bg-white/10 text-white' : 'border-[rgba(255,255,255,0.06)] bg-[#1a1a1a] text-[#666] hover:border-[rgba(255,255,255,0.14)] hover:text-[#aaa]'}`}
+          >
+            {tag}
+          </button>
+        ))}
+      </div>
+      {displayPosts.map((post) => (
+        <Link
+          key={post.slug}
+          href={`${primaryRoute}/${post.slug}`}
+          className="block rounded-xl border border-[rgba(255,255,255,0.06)] bg-[#1a1a1a] p-3.5 transition hover:border-[rgba(255,255,255,0.14)] hover:bg-[#222]"
+        >
+          <p className="truncate text-[13px] font-semibold text-white/90">{post.title}</p>
+          <p className="mt-0.5 flex items-center gap-1 text-[11px] capitalize text-[#555]">
+            <Globe className="h-3 w-3 shrink-0" />
+            {postCategory(post) || 'Listing'}
+          </p>
+        </Link>
+      ))}
+    </div>
+  )
+}
+
+function ConnectMockup({ post, primaryRoute }: { post: SitePost | null; primaryRoute: string }) {
+  const content = post ? postContent(post) : {}
+  const address = postText(content.address) || postText(content.location) || ''
+  const phone = postText(content.phone) || ''
+  const website = postText(content.website) || postText(content.url) || ''
+  const hours = postText(content.hours) || postText(content.openingHours) || ''
+  const category = post ? postCategory(post) : ''
+  const mapsHref = address ? `https://maps.google.com/maps?q=${encodeURIComponent(address)}` : 'https://maps.google.com'
+
+  const rows = [
+    { icon: '📍', text: address || '42 Blossom Ave, Suite 3', href: mapsHref, external: true },
+    { icon: '🕐', text: hours || 'Mon–Sat  9 AM – 8 PM', href: null, external: false },
+    { icon: '📞', text: phone || '+1 (555) 204-7891', href: phone ? `tel:${phone}` : null, external: false },
+    { icon: '🌐', text: website || 'snowberryrose.com', href: website || '/search', external: !!website },
+  ]
+
+  return (
+    <div className="w-full max-w-[280px]">
+      <div className="rounded-xl border border-[rgba(255,255,255,0.07)] bg-[#1a1a1a] p-4">
+        <div className="flex items-center gap-3 border-b border-[rgba(255,255,255,0.06)] pb-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#252525] text-lg">🏪</div>
+          <div className="min-w-0">
+            <p className="truncate text-[13px] font-semibold text-white">{post?.title ?? 'Sunrise Market'}</p>
+            <p className="text-[11px] capitalize text-[#555]">{category || 'Grocery'} · Open now</p>
+          </div>
+        </div>
+        <div className="mt-3 space-y-2.5">
+          {rows.map((row) =>
+            row.href ? (
+              <a key={row.text} href={row.href} target={row.external ? '_blank' : undefined} rel="noreferrer"
+                className="flex items-center gap-2.5 transition hover:opacity-80">
+                <span className="shrink-0 text-sm">{row.icon}</span>
+                <span className="truncate text-[11px] text-[#888] underline-offset-2 hover:underline">{row.text}</span>
+              </a>
+            ) : (
+              <div key={row.text} className="flex items-center gap-2.5">
+                <span className="shrink-0 text-sm">{row.icon}</span>
+                <span className="truncate text-[11px] text-[#888]">{row.text}</span>
+              </div>
+            )
+          )}
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <a href={mapsHref} target="_blank" rel="noreferrer"
+            className="rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#1e1e1e] px-3 py-2 text-center text-[11px] font-semibold text-white/70 transition hover:bg-[#2a2a2a] hover:text-white">
+            Directions
+          </a>
+          <Link href={post ? `${primaryRoute}/${post.slug}` : '/contact'}
+            className="rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#1e1e1e] px-3 py-2 text-center text-[11px] font-semibold text-white/70 transition hover:bg-[#2a2a2a] hover:text-white">
+            {post ? 'View listing' : 'Contact'}
+          </Link>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ─── Content grid (dynamic posts) ─── */
+export function EditableMagazineSplit({ primaryTask, primaryRoute, posts, timeSections }: HomeSectionProps) {
+  const pool = dedupePosts([...posts, ...timeSections.flatMap((s) => s.posts)]).slice(0, 6)
+  if (!pool.length) return null
+
+  return (
+    <section className="border-t border-[rgba(255,255,255,0.06)] bg-[#0a0a0a] py-24 sm:py-28">
+      <div className={wrap}>
+        <div className="mb-12 flex flex-col items-center gap-4 text-center">
+          <SectionBadge>LATEST CONTENT</SectionBadge>
+          <h2 className="text-[2.5rem] font-bold tracking-[-0.03em] sm:text-[3.25rem]">
+            Fresh from the platform
+          </h2>
+          <p className="max-w-lg text-[16px] text-[#888888]">
+            The newest saves and discoveries from across {SITE_CONFIG.name}.
+          </p>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {pool.map((post) => (
+            <ContentCard
+              key={post.id || post.slug}
+              post={post}
+              task={primaryTask}
+              href={postHref(primaryTask, post, primaryRoute)}
+            />
+          ))}
+        </div>
+
         <div className="mt-10 text-center">
-          <Link href={primaryRoute} className="inline-flex items-center gap-2 rounded-lg border border-[var(--editable-border)] bg-[var(--slot4-surface-bg)] px-6 py-3 text-sm font-bold text-[var(--slot4-page-text)] transition hover:border-[var(--slot4-accent)] hover:text-[var(--slot4-accent)]">
-            Show more activity <ChevronRight className="h-4 w-4" />
+          <Link
+            href={primaryRoute}
+            className="inline-flex items-center gap-2.5 rounded-xl border border-[rgba(255,255,255,0.1)] bg-[#1e1e1e] px-7 py-3.5 text-[14px] font-semibold text-white transition hover:bg-[#2a2a2a]"
+          >
+            Browse all content <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
       </div>
@@ -297,100 +387,248 @@ export function EditableMagazineSplit({ primaryTask, primaryRoute, posts, timeSe
   )
 }
 
-/* --------------------- Time-based discovery sections -------------------- */
-function CompactCard({ post, href }: { post: SitePost; href: string }) {
-  const category = categoryOf(post)
+function ContentCard({ post, href, task }: { post: SitePost; href: string; task: TaskKey }) {
   const image = getEditablePostImage(post)
+  const category = categoryOf(post)
+  const website = getWebsite(post)
+  const isBookmark = task === 'sbm'
+
   return (
     <Link
       href={href}
-      className="group flex flex-col overflow-hidden rounded-xl border border-[var(--editable-border)] bg-[var(--slot4-surface-bg)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_8px_28px_rgba(0,0,0,0.12)]"
+      className="group flex flex-col overflow-hidden rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#141414] transition duration-300 hover:border-[rgba(255,255,255,0.14)]"
     >
-      <div className="relative aspect-[3/2] overflow-hidden bg-[var(--slot4-media-bg)]">
-        <img src={image} alt={post.title} className="absolute inset-0 h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]" loading="lazy" />
-        {category ? (
-          <span className="absolute left-3 top-3 rounded-full bg-white/95 px-3 py-1 text-[11px] font-bold text-[var(--slot4-page-text)] shadow-sm">{category}</span>
+      {!isBookmark && image && !image.includes('placeholder') ? (
+        <div className="relative aspect-[16/9] overflow-hidden bg-[#1a1a1a]">
+          <img src={image} alt={post.title} className="absolute inset-0 h-full w-full object-cover opacity-70 transition duration-500 group-hover:opacity-90 group-hover:scale-[1.03]" />
+          <div className="absolute inset-0 bg-gradient-to-t from-[rgba(0,0,0,0.7)] via-transparent to-transparent" />
+          {category ? (
+            <span className="absolute left-3 top-3 rounded-full border border-[rgba(255,255,255,0.1)] bg-[rgba(0,0,0,0.8)] px-3 py-1 text-[11px] font-medium text-white backdrop-blur-sm">
+              {category}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div className="flex flex-1 flex-col p-5">
+        {isBookmark ? (
+          <div className="mb-3 flex items-center gap-2">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#1e1e1e]">
+              <Globe className="h-3.5 w-3.5 text-[#888]" />
+            </div>
+            <span className="truncate text-[12px] text-[#666]">
+              {website ? website.replace(/^https?:\/\//, '').replace(/\/$/, '') : 'Bookmark'}
+            </span>
+          </div>
         ) : null}
-      </div>
-      <div className="flex flex-1 flex-col p-4">
-        <h3 className="line-clamp-2 text-base font-bold leading-snug tracking-[-0.01em] text-[var(--slot4-page-text)] group-hover:text-[var(--slot4-accent)]">
+
+        <h3 className="line-clamp-2 text-[15px] font-semibold leading-snug tracking-[-0.01em] text-white/90 transition group-hover:text-white">
           {post.title}
         </h3>
-        <RatingRow post={post} />
-        <p className="mt-2 line-clamp-2 flex-1 text-sm leading-6 text-[var(--slot4-muted-text)]">{getExcerpt(post, 110)}</p>
+        <p className="mt-2 line-clamp-2 text-[13px] leading-5 text-[#666]">{getExcerpt(post, 100)}</p>
+
+        <div className="mt-4 flex items-center justify-between gap-2 border-t border-[rgba(255,255,255,0.06)] pt-4">
+          <div className="flex items-center gap-0.5">
+            {[0, 1, 2, 3, 4].map((i) => (
+              <Star key={i} className={`h-3 w-3 ${i < 4 ? 'fill-[#555] text-[#555]' : 'fill-[#2a2a2a] text-[#2a2a2a]'}`} />
+            ))}
+          </div>
+          <span className="flex items-center gap-1 text-[12px] text-[#666] transition group-hover:text-[#aaa]">
+            {isBookmark ? 'Open' : 'Read'} <ExternalLink className="h-3 w-3" />
+          </span>
+        </div>
       </div>
     </Link>
   )
 }
 
-const sectionCopy: Record<string, { eyebrow: string; title: string }> = {
-  spotlight: { eyebrow: 'Fresh this week', title: 'New in the last 7 days' },
-  browse: { eyebrow: 'Trending now', title: 'Popular this month' },
-  index: { eyebrow: 'Evergreen', title: 'From the archive' },
-}
-
-export function EditableTimeCollections({ primaryTask, primaryRoute, posts, timeSections }: HomeSectionProps) {
-  // Use the real time windows; fall back to slicing posts so the page stays full.
-  const sections =
-    timeSections.length > 0
-      ? timeSections
-      : ([
-          { key: 'spotlight', posts: posts.slice(0, 8), href: primaryRoute },
-          { key: 'browse', posts: posts.slice(8, 16), href: primaryRoute },
-          { key: 'index', posts: posts.slice(16, 24), href: primaryRoute },
-        ] as Pick<HomeTimeSection, 'key' | 'posts' | 'href'>[])
-
-  const visible = sections.filter((section) => section.posts.length)
-  if (!visible.length) return null
+/* ─── Features grid (6 cards) ─── */
+export function EditableTimeCollections(_props: HomeSectionProps) {
+  const features = [
+    { icon: '🔖', title: 'Save in one click', body: 'Capture any URL instantly and add it to your personal collection without friction.' },
+    { icon: '🗂️', title: 'Smart organization', body: 'Categorize resources by topic, type, or tag so you can find them effortlessly later.' },
+    { icon: '🔍', title: 'Powerful search', body: 'Full-text search across titles, descriptions, tags, and categories all at once.' },
+    { icon: '📄', title: 'Rich content types', body: 'Bookmarks, articles, images, PDFs, and listings — all under one roof.' },
+    { icon: '⚡', title: 'Instant discovery', body: 'Browse curated feeds of the freshest resources as they are added to the platform.' },
+    { icon: '🌐', title: 'Public collections', body: 'Share your curated boards with the world or keep them private — your choice.' },
+  ]
 
   return (
-    <>
-      {visible.map((section, index) => {
-        const copy = sectionCopy[section.key] || { eyebrow: 'Discover', title: 'More to explore' }
-        return (
-          <section key={section.key} className={index % 2 === 0 ? 'bg-[var(--slot4-surface-bg)]' : 'bg-[var(--slot4-warm)]'}>
-            <div className={`py-12 sm:py-14 ${container}`}>
-              <div className="flex items-end justify-between gap-4">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--slot4-accent)]">{copy.eyebrow}</p>
-                  <h2 className="mt-2 text-2xl font-extrabold tracking-[-0.01em] sm:text-3xl">{copy.title}</h2>
-                </div>
-                <Link href={section.href || primaryRoute} className="inline-flex shrink-0 items-center gap-1 text-sm font-semibold text-[var(--slot4-accent)] hover:underline">
-                  See all <ArrowRight className="h-4 w-4" />
-                </Link>
-              </div>
-              <div className="mt-7 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {section.posts.slice(0, 8).map((post) => (
-                  <CompactCard key={post.id || post.slug} post={post} href={postHref(primaryTask, post, primaryRoute)} />
-                ))}
+    <section className="border-t border-[rgba(255,255,255,0.06)] bg-[#080808] py-24 sm:py-28">
+      <div className={wrap}>
+        <div className="mb-14 flex flex-col items-center gap-5 text-center">
+          <SectionBadge>FEATURES</SectionBadge>
+          <h2 className="max-w-2xl text-[2.5rem] font-bold leading-[1.05] tracking-[-0.03em] sm:text-[3.5rem]">
+            Your discovery engine, reinvented
+          </h2>
+          <p className="max-w-lg text-[16px] leading-7 text-[#888888]">
+            Every tool you need to save, organize, and explore curated content — in one place.
+          </p>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {features.map((f) => (
+            <div
+              key={f.title}
+              className="flex flex-col gap-4 rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#141414] p-7 transition duration-300 hover:border-[rgba(255,255,255,0.12)]"
+            >
+              <span className="text-3xl">{f.icon}</span>
+              <div>
+                <h3 className="text-[16px] font-bold">{f.title}</h3>
+                <p className="mt-2 text-[13.5px] leading-6 text-[#888]">{f.body}</p>
               </div>
             </div>
-          </section>
-        )
-      })}
-    </>
+          ))}
+        </div>
+      </div>
+    </section>
   )
 }
 
-/* -------------------------------- CTA band ------------------------------ */
+/* ─── Comparison section ─── */
+export function EditableComparisonSection() {
+  const ours = [
+    'Save any resource in one click',
+    'Unified hub for all content types',
+    'Smart search across your library',
+    'Always-on discovery feed',
+    'Clean, distraction-free design',
+    'Real-time curated collections',
+    'Transparent, simple access model',
+    'Proven results for curious minds',
+  ]
+  const theirs = [
+    'Manual bookmarking across tabs',
+    'Scattered across disconnected apps',
+    'No cross-platform search',
+    'Slow, algorithm-driven feeds',
+    'Cluttered, noisy interfaces',
+    'Reactive after-the-fact saving',
+    'Hidden costs and feature walls',
+    'Generic results with no curation',
+  ]
+
+  return (
+    <section className="border-t border-[rgba(255,255,255,0.06)] bg-[#0a0a0a] py-24 sm:py-28">
+      <div className={wrap}>
+        <div className="mb-14 flex flex-col items-center gap-5 text-center">
+          <SectionBadge>COMPARE</SectionBadge>
+          <h2 className="max-w-2xl text-[2.5rem] font-bold leading-[1.05] tracking-[-0.03em] sm:text-[3.5rem]">
+            How {SITE_CONFIG.name} stands apart
+          </h2>
+          <p className="max-w-lg text-[16px] leading-7 text-[#888888]">
+            Discover how we deliver a smarter, more focused discovery experience.
+          </p>
+        </div>
+
+        <div className="grid gap-5 lg:grid-cols-2">
+          {/* Us */}
+          <div className="rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[#141414] p-8">
+            <div className="mb-7 inline-flex items-center gap-2.5 rounded-full border border-[rgba(255,255,255,0.1)] bg-[#1e1e1e] px-4 py-2">
+              <Bookmark className="h-3.5 w-3.5 text-white/70" />
+              <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/70">{SITE_CONFIG.name.toUpperCase()}</span>
+            </div>
+            <ul className="divide-y divide-[rgba(255,255,255,0.06)]">
+              {ours.map((item) => (
+                <li key={item} className="flex items-center gap-4 py-4">
+                  <ArrowRight className="h-4 w-4 shrink-0 text-white/50" />
+                  <span className="text-[15px] font-medium text-white">{item}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Others */}
+          <div className="rounded-2xl border border-[rgba(255,255,255,0.06)] bg-[#0e0e0e] p-8">
+            <div className="mb-7 inline-flex items-center gap-2.5 rounded-full border border-[rgba(255,255,255,0.06)] bg-[#141414] px-4 py-2">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#555]">ALTERNATIVES</span>
+            </div>
+            <ul className="divide-y divide-[rgba(255,255,255,0.04)]">
+              {theirs.map((item) => (
+                <li key={item} className="flex items-center gap-4 py-4">
+                  <X className="h-4 w-4 shrink-0 text-[#444]" />
+                  <span className="text-[15px] text-[#555]">{item}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/* ─── FAQ accordion (needs useState — 'use client' on parent) ─── */
+const faqs = [
+  { q: 'What kind of content can I save?', a: 'You can save bookmarks (URLs), articles, images, PDFs, business listings, and classified posts. All content types are browseable and searchable from one place.' },
+  { q: 'Is it free to explore and discover content?', a: 'Yes — browsing, searching, and reading content is completely free. Creating an account lets you add content and manage your own collection.' },
+  { q: 'How does the search work?', a: 'Our search covers titles, descriptions, categories, and tags across every content type simultaneously, so you always find what you\'re looking for.' },
+  { q: 'Can I share collections or bookmarks with others?', a: 'Absolutely. Any saved resource is publicly reachable via its URL. You can share individual posts or point people to any category or section directly.' },
+  { q: 'How do I submit content to the platform?', a: 'Create a free account and use the Create page to submit bookmarks, articles, and more. Submissions appear on the platform for everyone to discover.' },
+]
+
+export function EditableHomeFaq() {
+  const [open, setOpen] = useState<number | null>(0)
+  return (
+    <section className="border-t border-[rgba(255,255,255,0.06)] bg-[#080808] py-24 sm:py-28">
+      <div className={`${wrap} max-w-3xl`}>
+        <div className="mb-14 flex flex-col items-center gap-5 text-center">
+          <SectionBadge>COMMON QUESTIONS</SectionBadge>
+          <h2 className="text-[2.5rem] font-bold leading-[1.05] tracking-[-0.03em] sm:text-[3.5rem]">
+            Got questions? We&apos;ve got answers.
+          </h2>
+          <p className="text-[16px] leading-7 text-[#888888]">
+            Find quick answers to the most common questions about the platform.
+          </p>
+        </div>
+
+        <div className="space-y-3">
+          {faqs.map((faq, i) => (
+            <div
+              key={i}
+              className="overflow-hidden rounded-xl border border-[rgba(255,255,255,0.07)] bg-[#141414]"
+            >
+              <button
+                type="button"
+                onClick={() => setOpen(open === i ? null : i)}
+                className="flex w-full items-center justify-between gap-4 px-7 py-5 text-left"
+              >
+                <span className="text-[15px] font-semibold text-white">{faq.q}</span>
+                {open === i
+                  ? <ChevronUp className="h-5 w-5 shrink-0 text-[#888]" />
+                  : <ChevronDown className="h-5 w-5 shrink-0 text-[#888]" />}
+              </button>
+              {open === i ? (
+                <div className="border-t border-[rgba(255,255,255,0.06)] px-7 pb-6 pt-4">
+                  <p className="text-[14.5px] leading-7 text-[#888888]">{faq.a}</p>
+                </div>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/* ─── Final CTA ─── */
 export function EditableHomeCta() {
   return (
-    <section id="get-app" className="scroll-mt-24 bg-[var(--slot4-accent)]">
-      <div className={`flex flex-col items-center gap-6 py-16 text-center sm:py-20 ${container}`}>
-        <h2 className="max-w-2xl text-3xl font-extrabold tracking-[-0.01em] text-white sm:text-4xl">
-          Got something worth sharing?
+    <section className="border-t border-[rgba(255,255,255,0.06)] bg-[#0a0a0a] py-28 sm:py-32">
+      <div className={`${wrap} flex flex-col items-center gap-7 text-center`}>
+        <SectionBadge>{pagesContent.home.cta.badge}</SectionBadge>
+        <h2 className="max-w-2xl text-balance text-[2.75rem] font-bold leading-[1.04] tracking-[-0.03em] sm:text-[3.75rem]">
+          {pagesContent.home.cta.title}
         </h2>
-        <p className="max-w-xl text-base text-white/90 sm:text-lg">
-          Add your business, post a listing, or share a story — and reach the {SITE_CONFIG.name} community.
+        <p className="max-w-md text-[16px] leading-7 text-[#888888]">
+          {pagesContent.home.cta.description}
         </p>
-        <div className="flex flex-wrap justify-center gap-4">
-          <Link href="/create" className="inline-flex items-center gap-2 rounded-lg bg-white px-7 py-3 text-sm font-bold text-[var(--slot4-accent)] transition hover:brightness-95">
-            Create a post
-          </Link>
-          <Link href="/contact" className="inline-flex items-center gap-2 rounded-lg border border-white/60 px-7 py-3 text-sm font-bold text-white transition hover:bg-white/10">
-            Contact us
-          </Link>
-        </div>
+        <Link
+          href={pagesContent.home.cta.primaryCta.href}
+          className="inline-flex items-center gap-3 rounded-xl border border-[rgba(255,255,255,0.12)] bg-[#1e1e1e] px-8 py-4 text-[15px] font-semibold text-white transition hover:bg-[#2a2a2a] active:scale-[0.98]"
+        >
+          {pagesContent.home.cta.primaryCta.label.toUpperCase()} <ArrowRight className="h-4 w-4" />
+        </Link>
       </div>
     </section>
   )

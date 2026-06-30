@@ -5,24 +5,20 @@
 
 import type { AdSkin } from '@/lib/ads/ad-frame'
 
-// Site-wide default skin — tune to your brand.
 export const adSkin: AdSkin = {
-  radius: '16px',
-  border: '1px solid rgba(0,0,0,0.06)',
-  shadow: '0 8px 30px rgba(0,0,0,0.06)',
-  background: '#ffffff',
-  labelClassName: 'bg-[#FF6600] text-white',
+  radius: '14px',
+  border: '1px solid rgba(255,255,255,0.06)',
+  shadow: '0 8px 32px rgba(0,0,0,0.8)',
+  background: '#141414',
+  labelClassName: 'bg-[#1e1e1e] text-white border border-[rgba(255,255,255,0.1)]',
 }
 
-// Optional per-slot overrides — adjust only where you need to.
 export const adSkinBySlot: Partial<Record<string, AdSkin>> = {
-  sidebar: { radius: '12px', shadow: 'none', border: '1px solid rgba(0,0,0,0.08)' },
-  popup: { radius: '24px' },
-  header: { radius: '20px', background: '#FFF9F2' },
+  sidebar: { radius: '12px', shadow: 'none', border: '1px solid rgba(255,255,255,0.06)', background: '#1c1c1c' },
+  popup: { radius: '20px', background: '#141414' },
+  header: { radius: '16px', background: '#0e0e0e', border: '1px solid rgba(255,255,255,0.06)' },
 }
 
-/** Merge site default + per-slot override for a slot. */
 export function skinFor(slot: string): AdSkin {
   return { ...adSkin, ...(adSkinBySlot[slot] ?? {}) }
 }
-// junior tweak
