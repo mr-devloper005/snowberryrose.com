@@ -1,26 +1,18 @@
 'use client'
 
-import { Building2, FileText, Image as ImageIcon, Mail, MapPin, Phone, Sparkles, Bookmark } from 'lucide-react'
+import { Building2, FileText, Image as ImageIcon, Mail, Sparkles, Bookmark } from 'lucide-react'
 import { pagesContent } from '@/editable/content/pages.content'
 import { getFactoryState } from '@/design/factory/get-factory-state'
 import { getProductKind } from '@/design/factory/get-product-kind'
 import { EditableContactLeadForm } from '@/editable/components/EditableContactLeadForm'
 import { EditableSiteShell } from '@/editable/shell/EditableSiteShell'
 
-const tone = {
-  shell: 'bg-[var(--slot4-page-bg)] text-[var(--slot4-page-text)]',
-  panel: 'border border-[var(--editable-border)] bg-[var(--slot4-surface-bg)]',
-  soft: 'border border-[var(--editable-border)] bg-[var(--slot4-panel-bg)]',
-  muted: 'text-[var(--slot4-muted-text)]',
-  action: 'bg-[var(--slot4-accent-fill)] text-[var(--slot4-on-accent)] hover:opacity-90',
-}
-
 function getLanes(kind: ReturnType<typeof getProductKind>) {
   if (kind === 'directory') {
     return [
       { icon: Building2, title: 'Business onboarding', body: 'Add listings, verify operational details, and bring your business surface live quickly.' },
-      { icon: Phone, title: 'Partnership support', body: 'Talk through bulk publishing, local growth, and operational setup questions.' },
-      { icon: MapPin, title: 'Coverage requests', body: 'Need a new geography or category lane? We can shape the directory around it.' },
+      { icon: Mail, title: 'Partnership support', body: 'Talk through bulk publishing, local growth, and operational setup questions.' },
+      { icon: Sparkles, title: 'Coverage requests', body: 'Need a new geography or category lane? We can shape the directory around it.' },
     ]
   }
   if (kind === 'editorial') {
@@ -50,27 +42,47 @@ export default function ContactPage() {
   const lanes = getLanes(productKind)
 
   return (
-    <EditableSiteShell className={tone.shell}>
-      <main className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
-        <section className="grid gap-8 lg:grid-cols-[0.95fr_1.05fr] lg:items-start">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--slot4-accent)]">{pagesContent.contact.eyebrow}</p>
-            <h1 className="editable-display mt-4 text-5xl font-semibold tracking-[-0.02em]">{pagesContent.contact.title}</h1>
-            <p className={`mt-5 max-w-2xl text-sm leading-8 ${tone.muted}`}>{pagesContent.contact.description}</p>
-            <div className="mt-8 space-y-4">
+    <EditableSiteShell>
+      <main className="min-h-screen bg-[var(--slot4-page-bg)] text-[var(--slot4-page-text)]">
+        {/* Hero */}
+        <section className="relative overflow-hidden border-b border-[var(--editable-border)]">
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_70%_50%_at_50%_-10%,rgba(255,255,255,0.02),transparent)]" />
+          <div className="mx-auto max-w-[var(--editable-container)] px-6 py-20 sm:py-24 lg:px-8">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[var(--slot4-accent)]">{pagesContent.contact.eyebrow}</p>
+            <h1 className="editable-display mt-5 max-w-2xl text-5xl font-bold leading-[1.04] tracking-[-0.03em] sm:text-6xl">
+              {pagesContent.contact.title}
+            </h1>
+            <p className="mt-6 max-w-xl text-[16px] leading-7 text-[var(--slot4-muted-text)]">
+              {pagesContent.contact.description}
+            </p>
+          </div>
+        </section>
+
+        {/* Body */}
+        <section className="mx-auto max-w-[var(--editable-container)] px-6 py-14 sm:py-16 lg:px-8">
+          <div className="grid gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:items-start">
+            {/* Lanes */}
+            <div className="space-y-4">
               {lanes.map((lane) => (
-                <div key={lane.title} className={`rounded-sm p-5 ${tone.soft}`}>
-                  <lane.icon className="h-5 w-5 text-[var(--slot4-accent)]" />
-                  <h2 className="editable-display mt-3 text-xl font-semibold">{lane.title}</h2>
-                  <p className={`mt-2 text-sm leading-7 ${tone.muted}`}>{lane.body}</p>
+                <div
+                  key={lane.title}
+                  className="rounded-2xl border border-[var(--editable-border)] bg-[var(--slot4-surface-bg)] p-6 transition duration-300 hover:border-[rgba(255,255,255,0.14)]"
+                >
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--slot4-accent-soft)]">
+                    <lane.icon className="h-5 w-5 text-[var(--slot4-accent)]" />
+                  </div>
+                  <h2 className="editable-display mt-4 text-[17px] font-bold tracking-[-0.015em]">{lane.title}</h2>
+                  <p className="mt-2 text-[13.5px] leading-6 text-[var(--slot4-muted-text)]">{lane.body}</p>
                 </div>
               ))}
             </div>
-          </div>
 
-          <div className={`rounded-sm p-7 ${tone.panel}`}>
-            <h2 className="editable-display text-2xl font-semibold">{pagesContent.contact.formTitle}</h2>
-            <EditableContactLeadForm />
+            {/* Form */}
+            <div className="overflow-hidden rounded-2xl border border-[var(--editable-border)] bg-[var(--slot4-surface-bg)] p-7 sm:p-9">
+              <h2 className="editable-display text-2xl font-bold tracking-[-0.02em]">{pagesContent.contact.formTitle}</h2>
+              <p className="mt-2 text-[13px] text-[var(--slot4-muted-text)]">We&apos;ll get back to you within 24 hours.</p>
+              <EditableContactLeadForm />
+            </div>
           </div>
         </section>
       </main>

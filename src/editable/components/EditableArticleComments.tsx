@@ -93,7 +93,7 @@ export function EditableArticleComments({ slug, comments = [] }: { slug: string;
           <button
             type="submit"
             disabled={!text.trim()}
-            className="inline-flex items-center gap-2 rounded-lg bg-[var(--tk-accent)] px-6 py-2.5 text-sm font-bold text-[var(--tk-on-accent)] transition hover:brightness-95 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-lg border border-[rgba(255,255,255,0.12)] bg-[#1e1e1e] px-6 py-2.5 text-sm font-bold text-white transition hover:brightness-95 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Send className="h-4 w-4" /> Post comment
           </button>
